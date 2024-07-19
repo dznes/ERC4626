@@ -61,7 +61,6 @@ trait IERC4626<TState> {
     ) -> u256;
 }
 
-
 #[starknet::interface]
 trait IERC4626Metadata<TState> {
     fn name(self: @TState) -> ByteArray;

@@ -1,14 +1,27 @@
-use core::traits::TryInto;
+use snforge_std::{declare, start_prank, stop_prank, ContractClassTrait, CheatTarget};
+use snforge_std::{
+    spy_events, SpyOn, EventSpy, EventFetcher, Event, event_name_hash, EventAssertions
+};
+use starknet::{
+    contract_address_const, get_block_info, ContractAddress, Felt252TryIntoContractAddress, TryInto,
+    Into, OptionTrait, class_hash::Felt252TryIntoClassHash, get_caller_address,
+    get_contract_address, storage_read_syscall
+};
+
+use openzeppelin::utils::serde::SerializedAppend;
+use openzeppelin::token::erc20::{ERC20ABIDispatcher, ERC20ABIDispatcherTrait};
+
+use array::{ArrayTrait, SpanTrait, ArrayTCloneImpl};
+use result::ResultTrait;
+use serde::Serde;
 use debug::PrintTrait;
+
+use box::BoxTrait;
+use integer::u256;
+use integer::BoundedU256;
+
 use erc4626::erc4626::interface::{IERC4626Dispatcher, IERC4626DispatcherTrait};
 use erc4626::utils::{pow_256};
-use integer::BoundedU256;
-use openzeppelin::token::erc20::{ERC20ABIDispatcher, ERC20ABIDispatcherTrait};
-use snforge_std::{
-    declare, ContractClassTrait, start_prank, stop_prank, CheatTarget, start_warp, stop_warp
-};
-use openzeppelin::utils::serde::SerializedAppend;
-use starknet::{ContractAddress, contract_address_const, get_contract_address};
 
 fn OWNER() -> ContractAddress {
     'owner'.try_into().unwrap()
@@ -35,12 +48,12 @@ fn VAULT_ADDRESS() -> ContractAddress {
 }
 
 fn deploy_token() -> (ERC20ABIDispatcher, ContractAddress) {
-    let token = declare("ERC20Token");
+    let token = declare("ERC20Token").unwrap();
     let mut calldata = Default::default();
     Serde::serialize(@OWNER(), ref calldata);
     Serde::serialize(@INITIAL_SUPPLY(), ref calldata);
 
-    let address = token.deploy_at(@calldata, TOKEN_ADDRESS()).unwrap();
+    let (address, _) = token.deploy_at(@calldata, TOKEN_ADDRESS()).unwrap();
     let dispatcher = ERC20ABIDispatcher { contract_address: address, };
     (dispatcher, address)
 }
@@ -54,11 +67,10 @@ fn deploy_contract() -> (ERC20ABIDispatcher, IERC4626Dispatcher) {
     calldata.append_serde(name);
     calldata.append_serde(symbol);
     calldata.append(0);
-    let vault = declare("ERC4626");
-    let contract_address = vault.deploy_at(@calldata, VAULT_ADDRESS()).unwrap();
+    let vault = declare("ERC4626").unwrap();
+    let (contract_address, _) = vault.deploy_at(@calldata, VAULT_ADDRESS()).unwrap();
     (token, IERC4626Dispatcher { contract_address })
 }
-
 
 #[test]
 fn test_constructor() {
@@ -68,6 +80,7 @@ fn test_constructor() {
     assert(vault.name() == "Vault Mock Token", 'invalid name');
     assert(vault.symbol() == "vltMCK", 'invalid symbol');
 }
+
 #[test]
 fn convert_to_assets() {
     let (_asset, vault) = deploy_contract();
@@ -75,6 +88,7 @@ fn convert_to_assets() {
     // 10e10 * (0 + 1) / (0 + 10e8)
     assert(vault.convert_to_assets(shares) == 100, 'invalid assets');
 }
+
 #[test]
 fn convert_to_shares() {
     let (_asset, vault) = deploy_contract();
@@ -119,6 +133,7 @@ fn preview_withdraw() {
     let (_asset, vault) = deploy_contract();
     assert(vault.preview_redeem(pow_256(10, 2)) == 100, 'invalid preview_withdraw');
 }
+
 #[test]
 fn test_deposit() {
     let (asset, vault) = deploy_contract();
@@ -144,6 +159,7 @@ fn test_max_redeem() {
     let shares = vault.deposit(amount, OWNER());
     assert(vault.max_redeem(OWNER()) == shares, 'invalid max redeem');
 }
+
 #[test]
 fn max_withdraw() {
     let (asset, vault) = deploy_contract();
@@ -157,6 +173,7 @@ fn max_withdraw() {
     let value = vault.convert_to_assets(vault.balanceOf(OWNER()));
     assert(vault.max_withdraw(OWNER()) == value, 'invalid max withdraw');
 }
+
 #[test]
 fn mint() {
     let (asset, vault) = deploy_contract();
@@ -170,6 +187,7 @@ fn mint() {
     let _shares = vault.mint(1, OWNER());
     assert(vault.balanceOf(OWNER()) == minted, 'invalid mint shares');
 }
+
 #[test]
 fn test_redeem() {
     let (asset, vault) = deploy_contract();
@@ -203,4 +221,3 @@ fn test_withdraw() {
     let _shares = vault.withdraw(amount, OWNER(), OWNER());
     assert(vault.balanceOf(OWNER()) == 0, 'invalid balance after');
 }
-
